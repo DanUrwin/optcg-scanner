@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="description" content="Scan and track your One Piece TCG collection">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="OP Card Scanner">
+    <title>One Piece Card Scanner</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Merriweather:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #d32f2f;
+            --secondary: #ffd700;
+            --dark: #1a1a2e;
+            --light: #f5e6d3;
+            --accent: #ff6b35;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Merriweather', serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: var(--light);
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(211, 47, 47, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 107, 53, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 40% 20%, rgba(255, 215, 0, 0.05) 0%, transparent 50%);
+            animation: float 20s ease-in-out infinite;
+            pointer-events: none;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(30px, -30px) rotate(120deg); }
+            66% { transform: translate(-20px, 20px) rotate(240deg); }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            animation: slideDown 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            font-family: 'Bebas Neue', cursive;
+            font-size: clamp(2.5rem, 8vw, 5rem);
+            color: var(--secondary);
+            text-shadow: 
+                3px 3px 0 var(--primary),
+                6px 6px 0 rgba(0,0,0,0.3);
+            letter-spacing: 4px;
+            margin-bottom: 0.5rem;
+            line-height: 1.1;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: var(--light);
+            opacity: 0.9;
+            font-weight: 300;
+            letter-spacing: 1px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            border: 2px solid rgba(255, 215, 0, 0.2);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            animation: fadeInUp 0.8s ease-out;
+            animation-fill-mode: both;
+        }
+
+        .card:nth-child(2) { animation-delay: 0.1s; }
+        .card:nth-child(3) { animation-delay: 0.2s; }
+        .card:nth-child(4) { animation-delay: 0.3s; }
+        .card:nth-child(5) { animation-delay: 0.4s; }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h2 {
+            font-family: 'Bebas Neue', cursive;
+            font-size: 2rem;
+            color: var(--secondary);
+            margin-bottom: 1.5rem;
+            letter-spacing: 2px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        h2::before {
+            content: '⚓';
+            font-size: 1.5rem;
+        }
+
+        .step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            background: var(--primary);
+            border-radius: 50%;
+            font-family: 'Bebas Neue', cursive;
+            font-size: 1.5rem;
+            color: white;
+            margin-right: 10px;
+            box-shadow: 0 4px 15px rgba(211, 47, 47, 0.4);
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+            margin: 1rem 0;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .file-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            padding: 2rem;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Bebas Neue', cursive;
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+            border: 3px dashed rgba(255, 255, 255, 0.3);
+            box-shadow: 0 10px 30px rgba(211, 47, 47, 0.3);
+        }
+
+        .file-label:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(211, 47, 47, 0.5);
+            border-color: var(--secondary);
+        }
+
+        .file-label::before {
+            content: '📸';
+            font-size: 2rem;
+        }
+
+        button {
+            background: linear-gradient(135deg, var(--secondary), #ffa500);
+            color: var(--dark);
+            border: none;
+            padding: 1.2rem 3rem;
+            border-radius: 50px;
+            font-family: 'Bebas Neue', cursive;
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(255, 215, 0, 0.3);
+            margin-top: 1rem;
+            width: 100%;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 15px 40px rgba(255, 215, 0, 0.5);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+        }
+
+        button.secondary:hover:not(:disabled) {
+            box-shadow: 0 15px 40px rgba(76, 175, 80, 0.5);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-group label {
+            font-family: 'Bebas Neue', cursive;
+            font-size: 1.2rem;
+            color: var(--secondary);
+            letter-spacing: 1px;
+        }
+
+        .form-group input,
+        .form-group select {
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: 2px solid rgba(255, 215, 0, 0.3);
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--light);
+            font-family: 'Merriweather', serif;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--secondary);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .form-group select {
+            cursor: pointer;
+        }
+
+        .info-box {
+            background: rgba(255, 215, 0, 0.1);
+            border-left: 4px solid var(--secondary);
+            padding: 1rem 1.5rem;
+            margin: 1rem 0;
+            border-radius: 5px;
+        }
+
+        .info-box p {
+            margin: 0.5rem 0;
+            line-height: 1.6;
+        }
+
+        .scanned-cards-table {
+            width: 100%;
+            margin-top: 1.5rem;
+            border-collapse: collapse;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .scanned-cards-table th {
+            background: rgba(255, 215, 0, 0.2);
+            padding: 1rem;
+            text-align: left;
+            font-family: 'Bebas Neue', cursive;
+            font-size: 1.1rem;
+            color: var(--secondary);
+            letter-spacing: 1px;
+        }
+
+        .scanned-cards-table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .scanned-cards-table tr:hover {
+            background: rgba(255, 215, 0, 0.05);
+        }
+
+        .install-prompt {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            padding: 1.5rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            text-align: center;
+            display: none;
+        }
+
+        .install-prompt button {
+            background: var(--secondary);
+            color: var(--dark);
+            margin-top: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 2.5rem;
+            }
+
+            .card {
+                padding: 1.5rem;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .scanned-cards-table {
+                font-size: 0.9rem;
+            }
+
+            .scanned-cards-table th,
+            .scanned-cards-table td {
+                padding: 0.5rem;
+            }
+        }
+
+        #status {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        #status.success {
+            background: rgba(76, 175, 80, 0.2);
+            border: 2px solid #4CAF50;
+            color: #81C784;
+        }
+
+        #status.error {
+            background: rgba(244, 67, 54, 0.2);
+            border: 2px solid #F44336;
+            color: #EF5350;
+        }
+    </style>
+</head>
+<body>
+    <!-- Install Prompt -->
+    <div id="install-prompt" class="install-prompt">
+        <h3>📲 Install This App!</h3>
+        <p>Add One Piece Card Scanner to your home screen for quick access</p>
+        <button id="install-button">Install App</button>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>One Piece TCG<br>Card Scanner</h1>
+            <p class="subtitle">Scan • Track • Export</p>
+        </header>
+
+        <div class="card">
+            <h2><span class="step-number">1</span> Database Ready</h2>
+            <div class="info-box">
+                <p style="color: #4CAF50; font-weight: bold;">✓ 2,500+ Cards Loaded!</p>
+                <p>All One Piece sets ready to scan</p>
+                <p style="font-size: 0.9rem; margin-top: 0.5rem;">📱 Works offline after first load</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2><span class="step-number">2</span> Scan Cards</h2>
+            <div class="info-box">
+                <p>📸 <strong>Auto-Scan Mode:</strong> Upload a card photo to identify it!</p>
+            </div>
+            <div class="file-input-wrapper">
+                <input type="file" id="scan-upload" accept="image/*" capture="environment">
+                <label for="scan-upload" class="file-label">
+                    Take Photo / Upload Card
+                </label>
+            </div>
+            <div id="scan-preview" style="margin-top: 1rem; text-align: center;"></div>
+            <div id="status"></div>
+        </div>
+
+        <div id="card-details-section" style="display: none;">
+            <div class="card">
+                <h2><span class="step-number">3</span> Card Details</h2>
+                <form id="card-form">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="quantity">Quantity</label>
+                            <input type="number" id="quantity" value="1" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="name">Name</label>
+                            <input type="text" id="name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="simple-name">Simple Name</label>
+                            <input type="text" id="simple-name">
+                        </div>
+                        <div class="form-group">
+                            <label for="set">Set</label>
+                            <input type="text" id="set">
+                        </div>
+                        <div class="form-group">
+                            <label for="card-number">Card Number</label>
+                            <input type="text" id="card-number">
+                        </div>
+                        <div class="form-group">
+                            <label for="set-code">Set Code</label>
+                            <input type="text" id="set-code">
+                        </div>
+                        <div class="form-group">
+                            <label for="printing">Printing</label>
+                            <select id="printing">
+                                <option value="Normal">Normal</option>
+                                <option value="Foil">Foil</option>
+                                <option value="Holo">Holo</option>
+                                <option value="Alt Art">Alt Art</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="condition">Condition</label>
+                            <select id="condition">
+                                <option value="Near Mint">Near Mint</option>
+                                <option value="Lightly Played">Lightly Played</option>
+                                <option value="Moderately Played">Moderately Played</option>
+                                <option value="Heavily Played">Heavily Played</option>
+                                <option value="Damaged">Damaged</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="language">Language</label>
+                            <select id="language">
+                                <option value="English">English</option>
+                                <option value="Japanese">Japanese</option>
+                                <option value="French">French</option>
+                                <option value="German">German</option>
+                                <option value="Spanish">Spanish</option>
+                                <option value="Italian">Italian</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="rarity">Rarity</label>
+                            <select id="rarity">
+                                <option value="Common">Common</option>
+                                <option value="Uncommon">Uncommon</option>
+                                <option value="Rare">Rare</option>
+                                <option value="Super Rare">Super Rare</option>
+                                <option value="Secret Rare">Secret Rare</option>
+                                <option value="Leader">Leader</option>
+                                <option value="Mythic">Mythic</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="product-id">Product ID</label>
+                            <input type="text" id="product-id">
+                        </div>
+                    </div>
+                    <button type="submit" class="secondary">✓ Add to Collection</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="collection-section" style="display: none;">
+            <div class="card">
+                <h2>📚 Your Collection</h2>
+                <div class="info-box">
+                    <p><strong>Total Cards:</strong> <span id="total-cards">0</span></p>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table class="scanned-cards-table">
+                        <thead>
+                            <tr>
+                                <th>Qty</th>
+                                <th>Name</th>
+                                <th>Set</th>
+                                <th>Card #</th>
+                                <th>Condition</th>
+                                <th>Rarity</th>
+                            </tr>
+                        </thead>
+                        <tbody id="collection-tbody"></tbody>
+                    </table>
+                </div>
+                <button id="export-btn" class="secondary" style="margin-top: 1.5rem;">
+                    📥 Download CSV
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
