@@ -2,6 +2,7 @@
 let cardDatabase = [];
 let scanImage = null;
 let scannedCollection = [];
+let ocrWorker = null;
 
 // Load collection from localStorage
 function loadCollection() {
@@ -15,6 +16,21 @@ function loadCollection() {
 // Save collection to localStorage
 function saveCollection() {
     localStorage.setItem('opCardCollection', JSON.stringify(scannedCollection));
+}
+
+// Initialize Tesseract OCR Worker
+async function initOCR() {
+    if (!ocrWorker) {
+        console.log('Initializing OCR...');
+        try {
+            ocrWorker = await Tesseract.createWorker('eng');
+            console.log('OCR Worker ready!');
+        } catch (error) {
+            console.error('OCR init failed:', error);
+            return null;
+        }
+    }
+    return ocrWorker;
 }
 
 // Initialize card database
@@ -32,6 +48,11 @@ const cardSets = [
     { prefix: 'OP11', name: 'A Fist of Divine Speed', count: 156 },
     { prefix: 'OP12', name: 'Legacy of the Master', count: 155 },
     { prefix: 'OP13', name: 'Carrying on His Will', count: 175 },
+    { prefix: 'OP14', name: 'The Azure Seas Seven', count: 156 },
+    { prefix: 'PRB01', name: 'One Piece The Best', count: 319 },
+    { prefix: 'PRB02', name: 'One Piece Card The Best Vol.2', count: 316 },
+    { prefix: 'EB01', name: 'Memorial Collection', count: 80 },
+    { prefix: 'EB02', name: 'Anime 25th Collection', count: 105 },
     { prefix: 'ST01', name: 'Straw Hat Crew', count: 17 },
     { prefix: 'ST02', name: 'Worst Generation', count: 17 },
     { prefix: 'ST03', name: 'The Seven Warlords', count: 17 },
@@ -60,6 +81,159 @@ cardSets.forEach(set => {
     }
 });
 
+// Parse OCR text to extract card info
+function parseOCRText(text) {
+    console.log('Raw OCR:', text);
+    
+    text = text.replace(/\n/g, ' ').toUpperCase();
+    
+    // Card number patterns
+    const patterns = [
+        /(OP|ST|EB|PRB|P)\s*(\d{1,2})\s*[-–—]\s*(\d{3})/gi,
+        /(OP|ST|EB|PRB|P)(\d{2})[-–—](\d{3})/gi,
+        /(OP|ST|EB|PRB|P)\s*(\d{2})(\d{3})/gi
+    ];
+    
+    let cardNumber = null;
+    for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match) {
+            cardNumber = match[0].replace(/\s+/g, '').replace(/[–—]/g, '-').toUpperCase();
+            break;
+        }
+    }
+    
+    // Rarity detection
+    const rarityPattern = /\b(SEC|SR|UC|L|R|C)\b/gi;
+    const rarityMatches = text.match(rarityPattern);
+    let rarity = null;
+    if (rarityMatches && rarityMatches.length > 0) {
+        rarity = rarityMatches[rarityMatches.length - 1].toUpperCase();
+    }
+    
+    // Alt art detection
+    const hasAltArt = text.includes('*') || text.includes('★') || text.includes('☆');
+    
+    console.log('Parsed:', { cardNumber, rarity, hasAltArt });
+    return { cardNumber, rarity, hasAltArt };
+}
+
+// Find matching cards in database
+function findMatchingCards(cardNumber) {
+    if (!cardNumber) return [];
+    
+    return cardDatabase.filter(card => 
+        card.cardNumber.toUpperCase() === cardNumber.toUpperCase()
+    );
+}
+
+// Show card selector modal
+function showCardSelector(matches, ocrData) {
+    const { cardNumber, rarity, hasAltArt } = ocrData;
+    
+    let html = `
+        <div style="background: rgba(255,215,0,0.1); border: 2px solid var(--secondary); border-radius: 15px; padding: 2rem; margin: 1.5rem 0;">
+            <h3 style="font-family: 'Bebas Neue', cursive; color: var(--secondary); font-size: 1.8rem; margin-bottom: 1rem;">
+                📸 OCR Results
+            </h3>
+            <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 10px; margin-bottom: 1.5rem;">
+                <p><strong>Card Number:</strong> ${cardNumber || '❌ Not detected'}</p>
+                <p><strong>Rarity:</strong> ${rarity || '❌ Not detected'}</p>
+                <p><strong>Alt Art (*):</strong> ${hasAltArt ? '✓ Yes' : '✗ No'}</p>
+            </div>
+    `;
+    
+    if (matches.length === 0) {
+        html += `
+            <p style="color: #f44336; font-weight: bold; margin-bottom: 1rem;">
+                ❌ Card not found in database
+            </p>
+            <p style="margin-bottom: 1rem;">Please enter manually or try again.</p>
+            <button onclick="showManualEntry()" style="width: 100%;">
+                ✏️ Enter Manually
+            </button>
+        `;
+    } else if (matches.length === 1) {
+        html += `
+            <p style="color: #4CAF50; font-weight: bold; margin-bottom: 1rem;">
+                ✅ Match Found!
+            </p>
+            <div style="background: rgba(76,175,80,0.1); padding: 1rem; border-radius: 10px; margin-bottom: 1rem;">
+                <p><strong>${matches[0].cardNumber}</strong></p>
+                <p>${matches[0].setName}</p>
+            </div>
+            <button onclick='fillCardForm(${JSON.stringify(matches[0])}, "${rarity}", ${hasAltArt})' style="width: 100%;">
+                ✓ Use This Card
+            </button>
+            <button onclick="showManualEntry()" style="width: 100%; margin-top: 0.5rem; background: rgba(255,255,255,0.1);">
+                ✏️ Enter Manually
+            </button>
+        `;
+    } else {
+        html += `
+            <p style="color: var(--secondary); font-weight: bold; margin-bottom: 1rem;">
+                🔍 Found ${matches.length} sets
+            </p>
+            <p style="margin-bottom: 1rem;">Which set?</p>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+        `;
+        
+        matches.forEach(match => {
+            html += `
+                <button onclick='fillCardForm(${JSON.stringify(match)}, "${rarity}", ${hasAltArt})' 
+                        style="width: 100%; text-align: left; padding: 1rem; background: rgba(255,255,255,0.05);">
+                    <strong>${match.setCode}</strong> - ${match.setName}
+                </button>
+            `;
+        });
+        
+        html += `
+            </div>
+            <button onclick="showManualEntry()" style="width: 100%; margin-top: 1rem; background: rgba(255,255,255,0.1);">
+                ✏️ Enter Manually
+            </button>
+        `;
+    }
+    
+    html += '</div>';
+    scanPreview.innerHTML += html;
+}
+
+// Fill form with matched card
+window.fillCardForm = function(card, rarity, hasAltArt) {
+    document.getElementById('name').value = card.cardNumber;
+    document.getElementById('card-number').value = card.cardNumber;
+    document.getElementById('set-code').value = card.setCode;
+    document.getElementById('set').value = card.setName;
+    
+    if (rarity) {
+        const rarityMap = {
+            'C': 'Common',
+            'UC': 'Uncommon',
+            'R': 'Rare',
+            'SR': 'Super Rare',
+            'SEC': 'Secret Rare',
+            'L': 'Leader'
+        };
+        document.getElementById('rarity').value = rarityMap[rarity] || 'Rare';
+    }
+    
+    if (hasAltArt) {
+        document.getElementById('printing').value = 'Alt Art';
+    }
+    
+    cardDetailsSection.style.display = 'block';
+    showStatus('✅ Review and add to collection', 'success');
+    cardDetailsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+// Show manual entry
+window.showManualEntry = function() {
+    cardDetailsSection.style.display = 'block';
+    showStatus('📝 Enter manually', 'success');
+    cardDetailsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
 // DOM Elements
 const scanUpload = document.getElementById('scan-upload');
 const scanPreview = document.getElementById('scan-preview');
@@ -71,7 +245,7 @@ const collectionTbody = document.getElementById('collection-tbody');
 const totalCardsSpan = document.getElementById('total-cards');
 const exportBtn = document.getElementById('export-btn');
 
-// Handle scan upload
+// Handle scan with OCR
 scanUpload.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -81,30 +255,35 @@ scanUpload.addEventListener('change', async (e) => {
         scanImage = event.target.result;
         
         scanPreview.innerHTML = `
-            <img src="${scanImage}" style="max-width: 200px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);" alt="Scanned card">
+            <img src="${scanImage}" style="max-width: 250px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);" alt="Scanned card">
         `;
         
-        showStatus('🔍 Scanning...', 'success');
-
-        await new Promise(resolve => setTimeout(resolve, 800));
-
-        const randomIndex = Math.floor(Math.random() * cardDatabase.length);
-        const matchedCard = cardDatabase[randomIndex];
-
-        document.getElementById('name').value = matchedCard.cardNumber;
-        document.getElementById('card-number').value = matchedCard.cardNumber;
-        document.getElementById('set-code').value = matchedCard.setCode;
-        document.getElementById('set').value = matchedCard.setName;
-
-        cardDetailsSection.style.display = 'block';
-        showStatus('✓ Card identified!', 'success');
+        showStatus('🔧 Initializing OCR...', 'success');
         
-        cardDetailsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const worker = await initOCR();
+        if (!worker) {
+            showStatus('❌ OCR failed', 'error');
+            showManualEntry();
+            return;
+        }
+        
+        showStatus('🔍 Reading card...', 'success');
+        
+        try {
+            const { data: { text } } = await worker.recognize(scanImage);
+            const ocrData = parseOCRText(text);
+            const matches = findMatchingCards(ocrData.cardNumber);
+            showCardSelector(matches, ocrData);
+        } catch (error) {
+            console.error('OCR Error:', error);
+            showStatus('❌ OCR failed', 'error');
+            showManualEntry();
+        }
     };
     reader.readAsDataURL(file);
 });
 
-// Handle form submission
+// Form submission
 cardForm.addEventListener('submit', (e) => {
     e.preventDefault();
 
@@ -159,7 +338,7 @@ function updateCollectionTable() {
     });
 }
 
-// Export to CSV
+// Export CSV
 exportBtn.addEventListener('click', () => {
     const headers = ['Quantity', 'Name', 'Simple Name', 'Set', 'Card Number', 'Set Code', 'Printing', 'Condition', 'Language', 'Rarity', 'Product ID'];
     
@@ -203,7 +382,7 @@ function showStatus(message, type) {
     statusDiv.style.display = 'block';
 }
 
-// PWA Install Prompt
+// PWA Install
 let deferredPrompt;
 const installPrompt = document.getElementById('install-prompt');
 const installButton = document.getElementById('install-button');
@@ -225,7 +404,7 @@ installButton.addEventListener('click', async () => {
     }
 });
 
-// Register Service Worker
+// Service Worker
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('service-worker.js')
@@ -234,5 +413,4 @@ if ('serviceWorker' in navigator) {
     });
 }
 
-// Load saved collection on page load
 loadCollection();
